@@ -27,18 +27,22 @@ module.exports = (() => {
         return createResponse(url,200);
     }
 
-    SingletonClass.prototype.exchangeCode = function exchangeCode(code) {
+    SingletonClass.prototype.exchangeCode = function exchangeCode(code, gatewayUrl) {
         const params = {"code": code,
             "grant_type": "authorization_code",
-            "redirect_uri": getRedirectURI()};
+            "redirect_uri": getRedirectURI(gatewayUrl)};
         const headers = {"Content-Type": "application/x-www-form-urlencoded",
             "Authorization": getBase64EncodedCredential()};
         const options = {
+            hostname: getCognitoHost(true),
+            port: 443,
+            path: "/oauth2/token",
             method: 'POST',
             headers: headers
         };
+        console.info('Options:', options);
         return new Promise((resolve, reject) => {
-            const req = https.request(getCognitoHost() + "/oauth2/token?" + querystring.stringify(params), options, (res) => {
+            const req = https.request(options, (res) => {
                 if (res.statusCode < 200 || res.statusCode > 299) {
                     return reject(new Error(`HTTP status code ${res.statusCode}`))
                 }
@@ -56,8 +60,9 @@ module.exports = (() => {
                             const response = createResponse(loginRedirectUrl + "?session=" + userInfo["id"], 307);
                             resolve(response);
                         });
+                    } else {
+                        reject(new Error('Request error:' + resString));
                     }
-                    reject(new Error('Request error:' + resString));
                 })
             });
 
@@ -119,11 +124,14 @@ module.exports = (() => {
     }
 
     function createResponse(body, statusCode) {
-        const headers = {
+        let headers = {
             'Access-Control-Allow-Origin': crossAllowOrigin,
             'Access-Control-Allow-Headers': 'Content-Type',
             'Access-Control-Allow-Methods': 'OPTIONS,POST,GET'
         };
+        if(statusCode === 307 || statusCode === 302 || statusCode === 303) {
+            headers["Location"] = body;
+        }
         return {
             statusCode: statusCode,
             headers: headers,
@@ -131,7 +139,10 @@ module.exports = (() => {
         };
     }
 
-    function getCognitoHost() {
+    function getCognitoHost(noPrefix) {
+        if(noPrefix != null && noPrefix === true) {
+            return cognitoDomainPrefix + ".auth.us-east-1.amazoncognito.com"
+        }
         return "https://" + cognitoDomainPrefix + ".auth.us-east-1.amazoncognito.com"
     }
 
@@ -140,7 +151,7 @@ module.exports = (() => {
     }
 
     function getBase64EncodedCredential() {
-        return btoaImplementation(cognitoAppId + ":" + cognitoAppSecret);
+        return "Basic " + btoaImplementation(cognitoAppId + ":" + cognitoAppSecret);
     }
 
     function btoaImplementation(str) {

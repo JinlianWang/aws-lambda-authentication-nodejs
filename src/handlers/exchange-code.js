@@ -9,7 +9,7 @@ exports.exchangeCodeHandler = async (event) => {
     console.info('received:', event);
 
     const authenticationService = AuthenticationServiceFactory.getInstance();
-    const response = await authenticationService.exchangeCode(event["queryStringParameters"]["code"]);
+    const response = await authenticationService.exchangeCode(event["queryStringParameters"]["code"], authenticationService.getGatewayUrl(event));
 
     // All log statements are written to CloudWatch
     console.info(`response from: ${event.path} statusCode: ${response.statusCode} body: ${response.body}`);
