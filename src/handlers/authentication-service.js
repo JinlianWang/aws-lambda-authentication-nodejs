@@ -55,7 +55,8 @@ module.exports = (() => {
                             userInfo["id"] = uuid.v4();
                             userInfo["expirationTime"] = Date.now()  + 15 * 60 * 1000;  // Valid for 15 minutes
                             sessionInfo = userInfo;
-                            resolve(sessionInfo);
+                            const response = createResponse(loginRedirectUrl + "?session=" + userInfo["id"], 307);
+                            resolve(response);
                         });
                     }
                     reject(new Error('Request error:' + resString));

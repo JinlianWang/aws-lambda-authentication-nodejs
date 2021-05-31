@@ -1,119 +1,78 @@
-# This is the SAM template that represents the architecture of your serverless application
-# https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-template-basics.html
-
-# The AWSTemplateFormatVersion identifies the capabilities of the template
-# https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/format-version-structure.html
 AWSTemplateFormatVersion: 2010-09-09
 Description: >-
-  aws-lambda-authentication-nodejs
+  Node.js implementation of four endpoints/Lambda functions for authorization code grant type using AWS Cognito and Lambda.
 
-# Transform section specifies one or more macros that AWS CloudFormation uses to process your template
-# https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/transform-section-structure.html
 Transform:
 - AWS::Serverless-2016-10-31
 
-# Resources declares the AWS resources that you want to include in the stack
-# https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/resources-section-structure.html
-Resources:
-  # Each Lambda function is defined by properties:
-  # https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+Globals:
+  Function:
+    Runtime: nodejs14.x
+    MemorySize: 128
+    Timeout: 100
+    Policies:
+      - AWSLambdaBasicExecutionRole
+      - AWSLambda_ReadOnlyAccess
+      - AWSXrayWriteOnlyAccess
+      - AWSLambdaVPCAccessExecutionRole
+    Tracing: Active
+    Environment:
+      Variables:
+        COGNITO_DOMAIN_PREFIX: sunnyoauth
+        COGNITO_APP_ID: 1vvp0tt53g1uhntoa5bmvnvk2a
+        COGNITO_APP_SECRET: <secret>
+        #API_GATEWAY_URL: https://mgbzy4msg9.execute-api.us-east-1.amazonaws.com/Prod/
+        CORS_ALLOW_ORIGIN: http://localhost:4200
+        #CORS_ALLOW_ORIGIN: http://oauthdemo2021.s3-website-us-east-1.amazonaws.com
+        LOGIN_REDIRECT_URL: http://localhost:4200
+        #LOGIN_REDIRECT_URL: http://oauthdemo2021.s3-website-us-east-1.amazonaws.com
 
-  # This is a Lambda function config associated with the source code: get-all-items.js
+Resources:
+
   getLoginUrlFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: src/handlers/get-login-url.getLoginUrlHandler
-      Runtime: nodejs14.x
-      MemorySize: 128
-      Timeout: 100
       Description: Authentication endpoint to return login URL pointing to Cognito.
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - AWSLambda_ReadOnlyAccess
-        - AWSXrayWriteOnlyAccess
-        - AWSLambdaVPCAccessExecutionRole
-      Tracing: Active
-      Environment:
-        Variables:
-          COGNITO_DOMAIN_PREFIX: sunnyoauth
-          COGNITO_APP_ID: 1vvp0tt53g1uhntoa5bmvnvk2a
-          COGNITO_APP_SECRET: <secret>
-          API_GATEWAY_URL: https://mgbzy4msg9.execute-api.us-east-1.amazonaws.com/Prod/
-          CORS_ALLOW_ORIGIN: http://localhost:4200
-          #CORS_ALLOW_ORIGIN: http://oauthdemo2021.s3-website-us-east-1.amazonaws.com
-          LOGIN_REDIRECT_URL: http://localhost:4200
-          #LOGIN_REDIRECT_URL: http://oauthdemo2021.s3-website-us-east-1.amazonaws.com
       Events:
         Api:
           Type: Api
           Properties:
-            Path: /
+            Path: /authentication/login
             Method: GET
-  # Each Lambda function is defined by properties:
-  # https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
-
-  # This is a Lambda function config associated with the source code: get-by-id.js
-  getByIdFunction:
+  getLoginStatusFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: src/handlers/get-by-id.getByIdHandler
-      Runtime: nodejs14.x
-      MemorySize: 128
-      Timeout: 100
-      Description: A simple example includes a HTTP get method to get one item by id from a DynamoDB table.
-      Policies:
-        # Give Create/Read/Update/Delete Permissions to the SampleTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref SampleTable
-      Environment:
-        Variables:
-          # Make table name accessible as environment variable from function code during execution
-          SAMPLE_TABLE: !Ref SampleTable
+      Handler: src/handlers/get-login-status.getLoginStatusHandler
+      Description: Authentication endpoint to return current login status.
       Events:
         Api:
           Type: Api
           Properties:
-            Path: /{id}
+            Path: /authentication/status
             Method: GET
-  # Each Lambda function is defined by properties:
-  # https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
-
-  # This is a Lambda function config associated with the source code: put-item.js
-  putItemFunction:
+  logoutFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: src/handlers/put-item.putItemHandler
-      Runtime: nodejs14.x
-      MemorySize: 128
-      Timeout: 100
-      Description: A simple example includes a HTTP post method to add one item to a DynamoDB table.
-      Policies:
-        # Give Create/Read/Update/Delete Permissions to the SampleTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref SampleTable
-      Environment:
-        Variables:
-          # Make table name accessible as environment variable from function code during execution
-          SAMPLE_TABLE: !Ref SampleTable
+      Handler: src/handlers/logout.logoutHandler
+      Description: Authentication endpoint to logout existing session.
       Events:
         Api:
           Type: Api
           Properties:
-            Path: /
-            Method: POST
-  # Simple syntax to create a DynamoDB table with a single attribute primary key, more in
-  # https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlesssimpletable
-
-  # DynamoDB table to store item: {id: &lt;ID&gt;, name: &lt;NAME&gt;}
-  SampleTable:
-    Type: AWS::Serverless::SimpleTable
+            Path: /authentication/logout
+            Method: GET
+  exchangeCodeFunction:
+    Type: AWS::Serverless::Function
     Properties:
-      PrimaryKey:
-        Name: id
-        Type: String
-      ProvisionedThroughput:
-        ReadCapacityUnits: 2
-        WriteCapacityUnits: 2
+      Handler: src/handlers/exchange-code.exchangeCodeHandler
+      Description: Authentication endpoint to exchange code for a session token.
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /authentication/exchange
+            Method: GET
 
 Outputs:
   WebEndpoint:
