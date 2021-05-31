@@ -10,11 +10,6 @@ Globals:
     Runtime: nodejs14.x
     MemorySize: 128
     Timeout: 100
-    Policies:
-      - AWSLambdaBasicExecutionRole
-      - AWSLambda_ReadOnlyAccess
-      - AWSXrayWriteOnlyAccess
-      - AWSLambdaVPCAccessExecutionRole
     Tracing: Active
     Environment:
       Variables:
@@ -28,12 +23,16 @@ Globals:
         #LOGIN_REDIRECT_URL: http://oauthdemo2021.s3-website-us-east-1.amazonaws.com
 
 Resources:
-
   getLoginUrlFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: src/handlers/get-login-url.getLoginUrlHandler
       Description: Authentication endpoint to return login URL pointing to Cognito.
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AWSLambda_ReadOnlyAccess
+        - AWSXrayWriteOnlyAccess
+        - AWSLambdaVPCAccessExecutionRole
       Events:
         Api:
           Type: Api
@@ -45,6 +44,11 @@ Resources:
     Properties:
       Handler: src/handlers/get-login-status.getLoginStatusHandler
       Description: Authentication endpoint to return current login status.
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AWSLambda_ReadOnlyAccess
+        - AWSXrayWriteOnlyAccess
+        - AWSLambdaVPCAccessExecutionRole
       Events:
         Api:
           Type: Api
@@ -56,6 +60,11 @@ Resources:
     Properties:
       Handler: src/handlers/logout.logoutHandler
       Description: Authentication endpoint to logout existing session.
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AWSLambda_ReadOnlyAccess
+        - AWSXrayWriteOnlyAccess
+        - AWSLambdaVPCAccessExecutionRole
       Events:
         Api:
           Type: Api
@@ -67,6 +76,11 @@ Resources:
     Properties:
       Handler: src/handlers/exchange-code.exchangeCodeHandler
       Description: Authentication endpoint to exchange code for a session token.
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AWSLambda_ReadOnlyAccess
+        - AWSXrayWriteOnlyAccess
+        - AWSLambdaVPCAccessExecutionRole
       Events:
         Api:
           Type: Api
