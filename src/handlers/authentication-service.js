@@ -13,8 +13,6 @@ module.exports = (() => {
     const loginRedirectUrl = process.env.LOGIN_REDIRECT_URL;
     let sessionInfo = null;
 
-    SingletonClass.prototype.cognitoAppId = cognitoAppId;
-    SingletonClass.prototype.loginRedirectUrl = loginRedirectUrl;
     SingletonClass.prototype.getGatewayUrl = function getGatewayUrl(event) {
         const gatewayId = event["requestContext"]["apiId"];
         const stage = event["requestContext"]["stage"];
@@ -142,8 +140,16 @@ module.exports = (() => {
     }
 
     function getBase64EncodedCredential() {
-        return btoa(cognitoAppId + ":" + cognitoAppSecret);
+        return btoaImplementation(cognitoAppId + ":" + cognitoAppSecret);
     }
+
+    function btoaImplementation(str) {
+        try {
+            return btoa(str);
+        } catch(err) {
+            return Buffer.from(str).toString("base64");
+        }
+    };
 
     let instance;
     return {
