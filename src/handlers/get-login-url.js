@@ -8,7 +8,8 @@ exports.getLoginUrlHandler = async (event) => {
     // All log statements are written to CloudWatch
     console.info('received:', event);
 
-    const response = AuthenticationServiceFactory.getInstance().loginUrl();
+    const authenticationService = AuthenticationServiceFactory.getInstance();
+    const response = authenticationService.loginUrl(authenticationService.getGatewayUrl(event));
 
     // All log statements are written to CloudWatch
     console.info(`response from: ${event.path} statusCode: ${response.statusCode} body: ${response.body}`);
