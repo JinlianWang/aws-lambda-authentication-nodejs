@@ -16,15 +16,30 @@ module.exports = (() => {
     SingletonClass.prototype.getGatewayUrl = function getGatewayUrl(event) {
         const gatewayId = event["requestContext"]["apiId"];
         const stage = event["requestContext"]["stage"];
-        const gatewayUrl = `https://${gatewayId}.execute-api.${process.env.AWS_REGION}.amazonaws.com/${stage}`;
-        return gatewayUrl;
+        return `https://${gatewayId}.execute-api.${process.env.AWS_REGION}.amazonaws.com/${stage}`;
+    }
+
+    SingletonClass.prototype.createResponse = function createResponse(body, statusCode) {
+        let headers = {
+            'Access-Control-Allow-Origin': crossAllowOrigin,
+            'Access-Control-Allow-Headers': 'Content-Type',
+            'Access-Control-Allow-Methods': 'OPTIONS,POST,GET'
+        };
+        if(statusCode === 307 || statusCode === 302 || statusCode === 303) {//Redirect needs a Location header.
+            headers["Location"] = body;
+        }
+        return {
+            statusCode: statusCode,
+            headers: headers,
+            body: body
+        };
     }
 
     SingletonClass.prototype.loginUrl = function loginUrl(gatewayUrl) {
         const url = getCognitoHost() + "/oauth2/authorize?client_id="
         + cognitoAppId + "&redirect_uri=" + encodeURIComponent(getRedirectURI(gatewayUrl))
         + "&scope=openid&response_type=code";
-        return createResponse(url,200);
+        return this.createResponse(url,200);
     }
 
     SingletonClass.prototype.exchangeCode = function exchangeCode(code, gatewayUrl) {
@@ -40,7 +55,7 @@ module.exports = (() => {
             method: 'POST',
             headers: headers
         };
-        console.info('Options:', options);
+        //console.info('Options:', options); //Debugging only; do not print out in production as it contains secrets in Authorization header.
         return new Promise((resolve, reject) => {
             const req = https.request(options, (res) => {
                 if (res.statusCode < 200 || res.statusCode > 299) {
@@ -57,7 +72,7 @@ module.exports = (() => {
                             userInfo["id"] = uuid.v4();
                             userInfo["expirationTime"] = Date.now()  + 15 * 60 * 1000;  // Valid for 15 minutes
                             sessionInfo = userInfo;
-                            const response = createResponse(loginRedirectUrl + "?session=" + userInfo["id"], 307);
+                            const response = this.createResponse(loginRedirectUrl + "?session=" + sessionInfo["id"], 307);
                             resolve(response);
                         });
                     } else {
@@ -80,21 +95,33 @@ module.exports = (() => {
         });
     }
 
-    SingletonClass.prototype.loginStatus = function loginStatus(sessionToken) {
-        if(sessionInfo != null && (sessionInfo.id === sessionToken) && (sessionInfo.expirationTime > Date.now())) {
-            return createResponse(JSON.stringify(sessionInfo), 200);
+    SingletonClass.prototype.loginStatus = function loginStatus(authorizationHeader) {
+        const sessionToken = getSessionToken(authorizationHeader);
+        if(sessionInfo != null && (sessionInfo.id === sessionToken) && (sessionInfo.expirationTime > Date.now())) {//Session not expired yet
+            return this.createResponse(JSON.stringify(sessionInfo), 200);
         }
-        return createResponse("{}", 200);
+        return this.createResponse("{}", 200);
     }
 
-    SingletonClass.prototype.protectedResource = function protectedResource(sessionToken) {
+    SingletonClass.prototype.protectedResource = function protectedResource(authorizationHeader) {
+        const sessionToken = getSessionToken(authorizationHeader);
+        if(sessionInfo != null && (sessionInfo.id === sessionToken) && (sessionInfo.expirationTime > Date.now())) {//Session not expired yet
+            return this.createResponse("Protected Resource Retrieved from DB.", 200);
+        }
+        return this.createResponse("", 401);
+    }
+
+
+    SingletonClass.prototype.logout = function logout(authorizationHeader) {
+        const sessionToken = getSessionToken(authorizationHeader);
         if(sessionInfo != null && (sessionInfo.id === sessionToken)) {
-            return createResponse("Protected Resource Retrieved from DB.", 200);
+            sessionInfo = null;
         }
-        return createResponse("", 401);
+        return this.createResponse("", 200);
     }
 
-    SingletonClass.prototype.getSessionToken = function getSessionToken(authorizationHeader) {
+    function getSessionToken(authorizationHeader) {
+        //Authorization header has the format of "Bearer <session token>".
         if(authorizationHeader == null || authorizationHeader.length === 0) {
             return "";
         }
@@ -105,38 +132,30 @@ module.exports = (() => {
         return "";
     }
 
-    SingletonClass.prototype.logout = function logout(sessionToken) {
-        if(sessionInfo != null && (sessionInfo.id === sessionToken)) {
-            sessionInfo = null;
-        }
-        return createResponse("", 200);
-    }
-
     function getUserInfo(access_token) {
+        //Request user info from Cognito.
         const headers = {"Authorization": "Bearer " + access_token};
         return new Promise(function (resolve, reject) {
             https.get(getCognitoHost() + "/oauth2/userInfo", {headers: headers}, (res) => {
-                resolve(res);
+                if (res.statusCode < 200 || res.statusCode > 299) {
+                    return reject(new Error(`HTTP status code ${res.statusCode}`))
+                }
+
+                const body = []
+                res.on('data', (chunk) => body.push(chunk))
+                res.on('end', () => {
+                    const resString = Buffer.concat(body).toString();
+                    const response = JSON.parse(resString);
+                    if(response != null && response["sub"] != null) {
+                        resolve(response);
+                    } else {
+                        reject(new Error('Request error:' + resString));
+                    }
+                })
             }).on('error', (e) => {
                 reject(e);
             })
         });
-    }
-
-    function createResponse(body, statusCode) {
-        let headers = {
-            'Access-Control-Allow-Origin': crossAllowOrigin,
-            'Access-Control-Allow-Headers': 'Content-Type',
-            'Access-Control-Allow-Methods': 'OPTIONS,POST,GET'
-        };
-        if(statusCode === 307 || statusCode === 302 || statusCode === 303) {
-            headers["Location"] = body;
-        }
-        return {
-            statusCode: statusCode,
-            headers: headers,
-            body: body
-        };
     }
 
     function getCognitoHost(noPrefix) {
@@ -158,7 +177,7 @@ module.exports = (() => {
         try {
             return btoa(str);
         } catch(err) {
-            return Buffer.from(str).toString("base64");
+            return Buffer.from(str).toString("base64"); //btoa is not implemented in node.js.
         }
     };
 

@@ -29,70 +29,22 @@ Globals:
       AllowCredentials: "'*'"
 
 Resources:
-  getLoginUrlFunction:
+  authenticationFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: src/handlers/get-login-url.getLoginUrlHandler
-      Description: Authentication endpoint to return login URL pointing to Cognito.
+      Handler: src/handlers/authentication-handler.authenticationHandler
+      Description: Authentication endpoints to handle authorization code grant type using AWS Lambda, API Gateway and Cognito.
       Policies:
         - AWSLambdaBasicExecutionRole
         - AWSLambda_ReadOnlyAccess
         - AWSXrayWriteOnlyAccess
         - AWSLambdaVPCAccessExecutionRole
       Events:
-        Api:
+        DemoAPI:
           Type: Api
           Properties:
-            Path: /apis/authentication/login
-            Method: GET
-  getLoginStatusFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: src/handlers/get-login-status.getLoginStatusHandler
-      Description: Authentication endpoint to return current login status.
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - AWSLambda_ReadOnlyAccess
-        - AWSXrayWriteOnlyAccess
-        - AWSLambdaVPCAccessExecutionRole
-      Events:
-        Api:
-          Type: Api
-          Properties:
-            Path: /apis/authentication/status
-            Method: GET
-  logoutFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: src/handlers/logout.logoutHandler
-      Description: Authentication endpoint to logout existing session.
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - AWSLambda_ReadOnlyAccess
-        - AWSXrayWriteOnlyAccess
-        - AWSLambdaVPCAccessExecutionRole
-      Events:
-        Api:
-          Type: Api
-          Properties:
-            Path: /apis/authentication/logout
-            Method: GET
-  exchangeCodeFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: src/handlers/exchange-code.exchangeCodeHandler
-      Description: Authentication endpoint to exchange code for a session token.
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - AWSLambda_ReadOnlyAccess
-        - AWSXrayWriteOnlyAccess
-        - AWSLambdaVPCAccessExecutionRole
-      Events:
-        Api:
-          Type: Api
-          Properties:
-            Path: /apis/authentication/exchange
-            Method: GET
+            Path: /{proxy+}
+            Method: any
 
 Outputs:
   WebEndpoint:
