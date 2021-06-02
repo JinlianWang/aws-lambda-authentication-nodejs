@@ -5,7 +5,7 @@ if [[ $# -eq 1 ]] ; then
     STACK=$1
     echo "Deleting stack $STACK"
 fi
-FUNCTION=$(aws cloudformation describe-stack-resource --stack-name $STACK --logical-resource-id getAllItemsFunction --query 'StackResourceDetail.PhysicalResourceId' --output text)
+FUNCTION=$(aws cloudformation describe-stack-resource --stack-name $STACK --logical-resource-id authenticationFunction --query 'StackResourceDetail.PhysicalResourceId' --output text)
 aws cloudformation delete-stack --stack-name $STACK
 echo "Deleted $STACK stack."
 
@@ -35,4 +35,3 @@ while true; do
 done
 
 rm -f out.yml out.json
-rm -rf build .gradle target
