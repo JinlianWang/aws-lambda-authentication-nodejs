@@ -1,6 +1,5 @@
-const https = require('https');
-const querystring = require('querystring');
 const uuid = require('uuid');
+const fetch = require('node-fetch');
 
 const cognitoDomainPrefix = process.env.COGNITO_DOMAIN_PREFIX;
 const cognitoAppId = process.env.COGNITO_APP_ID;
@@ -10,7 +9,7 @@ const apiGatewayUrl = process.env.API_GATEWAY_URL;
 const loginRedirectUrl = process.env.LOGIN_REDIRECT_URL;
 
 
-class SingletonClass {
+class CognitoOAuthServices {
 
     #sessionInfo = null;
 
@@ -37,67 +36,41 @@ class SingletonClass {
     }
 
     loginUrl(gatewayUrl) {
-        const url = getCognitoHost() + "/oauth2/authorize?client_id="
-        + cognitoAppId + "&redirect_uri=" + encodeURIComponent(this.#getRedirectURI(gatewayUrl))
+        const url = CognitoOAuthServices.#getCognitoHost() + "/oauth2/authorize?client_id="
+        + cognitoAppId + "&redirect_uri=" + encodeURIComponent(CognitoOAuthServices.#getRedirectURI(gatewayUrl))
         + "&scope=openid&response_type=code";
         return this.createResponse(url,200);
     }
 
-    exchangeCode(code, gatewayUrl) {
+    async exchangeCode(code, gatewayUrl) {
         const params = {"code": code,
             "grant_type": "authorization_code",
-            "redirect_uri": this.#getRedirectURI(gatewayUrl)};
+            "redirect_uri": CognitoOAuthServices.#getRedirectURI(gatewayUrl)};
         const headers = {"Content-Type": "application/x-www-form-urlencoded",
-            "Authorization": this.#getBase64EncodedCredential()};
-        const options = {
-            hostname: getCognitoHost(true),
-            port: 443,
-            path: "/oauth2/token",
-            method: 'POST',
+            "Authorization": CognitoOAuthServices.#getBase64EncodedCredential()};
+
+        const res = await fetch(CognitoOAuthServices.#getCognitoHost(true) + '/oauth2/token?' + new URLSearchParams(params), {
+            method: 'post',
             headers: headers
-        };
-        //console.info('Options:', options); //Debugging only; do not print out in production as it contains secrets in Authorization header.
-        return new Promise((resolve, reject) => {
-            const req = https.request(options, (res) => {
-                if (res.statusCode < 200 || res.statusCode > 299) {
-                    return reject(new Error(`HTTP status code ${res.statusCode}`))
-                }
-
-                const body = []
-                res.on('data', (chunk) => body.push(chunk))
-                res.on('end', () => {
-                    const resString = Buffer.concat(body).toString();
-                    const response = JSON.parse(resString);
-                    if(response != null && response["access_token"] != null) {
-                        this.#getUserInfo(response["access_token"]).then((userInfo)=>{
-                            userInfo["id"] = uuid.v4();
-                            userInfo["expirationTime"] = Date.now()  + 15 * 60 * 1000;  // Valid for 15 minutes
-                            this.#sessionInfo = userInfo;
-                            const response = this.createResponse(loginRedirectUrl + "?session=" + this.#sessionInfo["id"], 307);
-                            resolve(response);
-                        });
-                    } else {
-                        reject(new Error('Request error:' + resString));
-                    }
-                })
-            });
-
-            req.on('error', (err) => {
-                reject(err);
-            });
-
-            req.on('timeout', () => {
-                req.destroy();
-                reject(new Error('Request time out'));
-            });
-
-            req.write(querystring.stringify(params));
-            req.end();
         });
+
+        const data = await res.json();
+        if (data.statusCode < 200 || data.statusCode > 299) {
+            throw  new Error(`HTTP status code ${data.statusCode}`);
+        }
+        if(data["access_token"] != null) {
+            const userInfo = await CognitoOAuthServices.#getUserInfo(data["access_token"]);
+            userInfo["id"] = uuid.v4();
+            userInfo["expirationTime"] = Date.now()  + 15 * 60 * 1000;  // Valid for 15 minutes
+            this.#sessionInfo = userInfo;
+            return this.createResponse(loginRedirectUrl + "?session=" + this.#sessionInfo["id"], 307);
+        } else {
+            throw new Error('Request error:' + JSON.stringify(data));
+        }
     }
 
     loginStatus(authorizationHeader) {
-        const sessionToken = this.#getSessionToken(authorizationHeader);
+        const sessionToken = CognitoOAuthServices.#getSessionToken(authorizationHeader);
         if(this.#sessionInfo != null && (this.#sessionInfo.id === sessionToken) && (this.#sessionInfo.expirationTime > Date.now())) {//Session not expired yet
             return this.createResponse(JSON.stringify(this.#sessionInfo), 200);
         }
@@ -105,7 +78,7 @@ class SingletonClass {
     }
 
     protectedResource(authorizationHeader) {
-        const sessionToken = this.#getSessionToken(authorizationHeader);
+        const sessionToken = CognitoOAuthServices.#getSessionToken(authorizationHeader);
         if(this.#sessionInfo != null && (this.#sessionInfo.id === sessionToken) && (this.#sessionInfo.expirationTime > Date.now())) {//Session not expired yet
             return this.createResponse("Protected Resource Retrieved from DB.", 200);
         }
@@ -114,14 +87,14 @@ class SingletonClass {
 
 
     logout(authorizationHeader) {
-        const sessionToken = this.#getSessionToken(authorizationHeader);
+        const sessionToken = CognitoOAuthServices.#getSessionToken(authorizationHeader);
         if(this.#sessionInfo != null && (this.#sessionInfo.id === sessionToken)) {
             this.#sessionInfo = null;
         }
         return this.createResponse("", 200);
     }
 
-    #getSessionToken(authorizationHeader) {
+    static #getSessionToken(authorizationHeader) {
         //Authorization header has the format of "Bearer <session token>".
         if(authorizationHeader == null || authorizationHeader.length === 0) {
             return "";
@@ -133,48 +106,41 @@ class SingletonClass {
         return "";
     }
 
-    #getUserInfo(access_token) {
+    static async #getUserInfo(access_token) {
         //Request user info from Cognito.
         const headers = {"Authorization": "Bearer " + access_token};
-        return new Promise(function (resolve, reject) {
-            https.get(this.#getCognitoHost() + "/oauth2/userInfo", {headers: headers}, (res) => {
-                if (res.statusCode < 200 || res.statusCode > 299) {
-                    return reject(new Error(`HTTP status code ${res.statusCode}`))
-                }
-
-                const body = []
-                res.on('data', (chunk) => body.push(chunk))
-                res.on('end', () => {
-                    const resString = Buffer.concat(body).toString();
-                    const response = JSON.parse(resString);
-                    if(response != null && response["sub"] != null) {
-                        resolve(response);
-                    } else {
-                        reject(new Error('Request error:' + resString));
-                    }
-                })
-            }).on('error', (e) => {
-                reject(e);
-            })
+        const res = await fetch(CognitoOAuthServices.#getCognitoHost() + "/oauth2/userInfo", {
+            method: 'get',
+            headers: headers
         });
+
+        const data = await res.json();
+        if (data.statusCode < 200 || data.statusCode > 299) {
+            throw  new Error(`HTTP status code ${data.statusCode}`);
+        }
+        if(data["sub"] != null) {
+            return data; 
+        } else {
+            throw new Error('Request error:' + JSON.stringify(data));
+        }
     }
 
-    #getCognitoHost(noPrefix) {
+    static #getCognitoHost(noPrefix) {
         if(noPrefix != null && noPrefix === true) {
             return cognitoDomainPrefix + ".auth.us-east-1.amazoncognito.com"
         }
         return "https://" + cognitoDomainPrefix + ".auth.us-east-1.amazoncognito.com"
     }
 
-    #getRedirectURI(gatewayUrl) {
+    static #getRedirectURI(gatewayUrl) {
         return (gatewayUrl != null ? gatewayUrl : apiGatewayUrl) + "/apis/authentication/exchange";
     }
 
-    #getBase64EncodedCredential() {
+    static #getBase64EncodedCredential() {
         return "Basic " + this.#btoaImplementation(cognitoAppId + ":" + cognitoAppSecret);
     }
 
-    #btoaImplementation(str) {
+    static #btoaImplementation(str) {
         try {
             return btoa(str);
         } catch(err) {
@@ -183,5 +149,5 @@ class SingletonClass {
     };
 }
 
-module.exports = new SingletonClass();
+module.exports = new CognitoOAuthServices();
 

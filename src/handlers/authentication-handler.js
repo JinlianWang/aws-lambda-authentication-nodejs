@@ -28,7 +28,7 @@ exports.authenticationHandler = async (event) => {
             response = await authenticationService.exchangeCode(event["queryStringParameters"]["code"], authenticationService.getGatewayUrl(event));
             break;
         case "/apis/authentication/resource":
-            response = await authenticationService.protectedResource(event["headers"]["Authorization"]);
+            response = authenticationService.protectedResource(event["headers"]["Authorization"]);
             break;
         default:
             response = authenticationService.createResponse("Page not found with http method: " + event.httpMethod + " path:" + (event.path == null ? "" : event.path), 404);
