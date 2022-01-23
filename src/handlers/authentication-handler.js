@@ -1,4 +1,4 @@
-const AuthenticationServiceFactory = require("./authentication-service.js");
+const authenticationService = require("./authentication-service.js");
 
 exports.authenticationHandler = async (event) => {
     if (event.httpMethod !== 'GET') {
@@ -8,7 +8,6 @@ exports.authenticationHandler = async (event) => {
     // All log statements are written to CloudWatch
     console.info('received:', event);
 
-    const authenticationService = AuthenticationServiceFactory.getInstance();
     let response = null;
 
     if(event.httpMethod !== "GET" || event.path == null) {
