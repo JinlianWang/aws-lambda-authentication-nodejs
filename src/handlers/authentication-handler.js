@@ -20,16 +20,21 @@ exports.authenticationHandler = async (event) => {
             response = authenticationService.loginUrl(authenticationService.getGatewayUrl(event));
             break;
         case "/apis/authentication/status":
-            response = authenticationService.loginStatus(event["headers"]["Authorization"]);
+            response = authenticationService.loginStatus(event.headers && event.headers["Authorization"]);
             break;
         case "/apis/authentication/logout":
-            response = authenticationService.logout(event["headers"]["Authorization"]);
+            response = authenticationService.logout(event.headers && event.headers["Authorization"]);
             break;
         case "/apis/authentication/exchange":
-            response = await authenticationService.exchangeCode(event["queryStringParameters"]["code"], authenticationService.getGatewayUrl(event));
+            const code = event.queryStringParameters && event.queryStringParameters["code"];
+            if(!code) {
+                response = authenticationService.createResponse("Missing code parameter", 400);
+            } else {
+                response = await authenticationService.exchangeCode(code, authenticationService.getGatewayUrl(event));
+            }
             break;
         case "/apis/authentication/resource":
-            response = await authenticationService.protectedResource(event["headers"]["Authorization"]);
+            response = await authenticationService.protectedResource(event.headers && event.headers["Authorization"]);
             break;
         default:
             response = authenticationService.createResponse("Page not found with http method: " + event.httpMethod + " path:" + (event.path == null ? "" : event.path), 404);
