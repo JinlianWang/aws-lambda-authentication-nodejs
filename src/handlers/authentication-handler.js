@@ -20,10 +20,10 @@ exports.authenticationHandler = async (event) => {
             response = authenticationService.loginUrl(authenticationService.getGatewayUrl(event));
             break;
         case "/apis/authentication/status":
-            response = authenticationService.loginStatus(event.headers && event.headers["Authorization"]);
+            response = await authenticationService.loginStatus(event.headers && event.headers["Authorization"]);
             break;
         case "/apis/authentication/logout":
-            response = authenticationService.logout(event.headers && event.headers["Authorization"]);
+            response = await authenticationService.logout(event.headers && event.headers["Authorization"]);
             break;
         case "/apis/authentication/exchange":
             const code = event.queryStringParameters && event.queryStringParameters["code"];

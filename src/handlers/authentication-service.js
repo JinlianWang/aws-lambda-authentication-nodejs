@@ -1,6 +1,7 @@
 const https = require('https');
 const querystring = require('querystring');
 const uuid = require('uuid');
+const AWS = require('aws-sdk');
 
 module.exports = (() => {
     function SingletonClass() {}
@@ -11,6 +12,8 @@ module.exports = (() => {
     const crossAllowOrigin = process.env.CORS_ALLOW_ORIGIN;
     const apiGatewayUrl = process.env.API_GATEWAY_URL;
     const loginRedirectUrl = process.env.LOGIN_REDIRECT_URL;
+    const sessionTable = process.env.SESSION_TABLE;
+    const dynamo = new AWS.DynamoDB.DocumentClient();
     let sessionInfo = null;
 
     SingletonClass.prototype.getGatewayUrl = function getGatewayUrl(event) {
@@ -68,13 +71,14 @@ module.exports = (() => {
                     const resString = Buffer.concat(body).toString();
                     const response = JSON.parse(resString);
                     if(response != null && response["access_token"] != null) {
-                        getUserInfo(response["access_token"]).then((userInfo)=>{
+                        getUserInfo(response["access_token"]).then(async (userInfo)=>{
                             userInfo["id"] = uuid.v4();
                             userInfo["expirationTime"] = Date.now()  + 15 * 60 * 1000;  // Valid for 15 minutes
                             sessionInfo = userInfo;
+                            await saveSessionToStore(userInfo);
                             const response = this.createResponse(loginRedirectUrl + "?session=" + sessionInfo["id"], 307);
                             resolve(response);
-                        });
+                        }).catch(reject);
                     } else {
                         reject(new Error('Request error:' + resString));
                     }
@@ -95,32 +99,42 @@ module.exports = (() => {
         });
     }
 
-    SingletonClass.prototype.loginStatus = function loginStatus(authorizationHeader) {
+    SingletonClass.prototype.loginStatus = async function loginStatus(authorizationHeader) {
         const sessionToken = getSessionToken(authorizationHeader);
-        if(sessionInfo != null && (sessionInfo.id === sessionToken) && (sessionInfo.expirationTime > Date.now())) {//Session not expired yet
-            return this.createResponse(JSON.stringify(sessionInfo), 200);
+        if(!sessionToken) {
+            return this.createResponse("{}", 200);
+        }
+        const record = await getSessionFromStore(sessionToken);
+        if(record != null && record.expirationTime > Date.now()) {
+            sessionInfo = record;
+            return this.createResponse(JSON.stringify(record), 200);
         }
         return this.createResponse("{}", 200);
     }
 
-    SingletonClass.prototype.protectedResource = function protectedResource(authorizationHeader) {
+    SingletonClass.prototype.protectedResource = async function protectedResource(authorizationHeader) {
         const sessionToken = getSessionToken(authorizationHeader);
-        if(sessionInfo != null && (sessionInfo.id === sessionToken) && (sessionInfo.expirationTime > Date.now())) {//Session not expired yet
+        const record = await getSessionFromStore(sessionToken);
+        if(record != null && record.expirationTime > Date.now()) {
+            sessionInfo = record;
             return this.createResponse("Protected Resource Retrieved from DB.", 200);
         }
         return this.createResponse("", 401);
     }
 
 
-    SingletonClass.prototype.logout = function logout(authorizationHeader) {
+    SingletonClass.prototype.logout = async function logout(authorizationHeader) {
         const sessionToken = getSessionToken(authorizationHeader);
+        if(sessionToken) {
+            await deleteSessionFromStore(sessionToken);
+        }
         if(sessionInfo != null && (sessionInfo.id === sessionToken)) {
             sessionInfo = null;
         }
         return this.createResponse("", 200);
     }
 
-    function getSessionToken(authorizationHeader) {
+function getSessionToken(authorizationHeader) {
         //Authorization header has the format of "Bearer <session token>".
         if(authorizationHeader == null || authorizationHeader.length === 0) {
             return "";
@@ -130,6 +144,19 @@ module.exports = (() => {
             return parts[1];
         }
         return "";
+    }
+
+    async function getSessionFromStore(sessionId) {
+        const result = await dynamo.get({TableName: sessionTable, Key: {id: sessionId}}).promise();
+        return result.Item;
+    }
+
+    async function saveSessionToStore(session) {
+        await dynamo.put({TableName: sessionTable, Item: session}).promise();
+    }
+
+    async function deleteSessionFromStore(sessionId) {
+        await dynamo.delete({TableName: sessionTable, Key: {id: sessionId}}).promise();
     }
 
     function getUserInfo(access_token) {

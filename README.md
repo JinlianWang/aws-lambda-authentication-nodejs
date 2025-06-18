@@ -18,6 +18,13 @@ CORS_ALLOW_ORIGIN: http://<s3-bucket>.s3-website-us-east-1.amazonaws.com
 
 A redeployment of API Gateway and Lambda functions are necessary after the change, see [template.yml](https://github.com/JinlianWang/aws-lambda-authentication-nodejs/blob/master/template.yml) for details.
 
+## Session Persistence
+
+Session information is now stored in a DynamoDB table. The name of the table is
+provided through the `SESSION_TABLE` environment variable and created as part of
+the SAM stack. Persisting sessions allows them to survive multiple Lambda
+invocations and enables horizontal scaling.
+
 ## Deploy the application
 
 To build and deploy your application, run the following in your shell to create a S3 bucket: 
