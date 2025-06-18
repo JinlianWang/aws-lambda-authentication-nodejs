@@ -144,6 +144,66 @@ module.exports = (() => {
         return this.createResponse("", 200);
     }
 
+    SingletonClass.prototype.refreshToken = async function refreshToken(authorizationHeader) {
+        const sessionToken = getSessionToken(authorizationHeader);
+        if (!sessionToken) {
+            return this.createResponse(JSON.stringify({ error: 'Missing session token' }), 400);
+        }
+        const record = await getSessionFromStore(sessionToken);
+        if (!record || !record.refreshToken) {
+            return this.createResponse(JSON.stringify({ error: 'Invalid session or no refresh token' }), 400);
+        }
+        const params = {
+            grant_type: 'refresh_token',
+            refresh_token: record.refreshToken,
+            client_id: cognitoAppId
+        };
+        const headers = {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Authorization': getBase64EncodedCredential()
+        };
+        const options = {
+            hostname: getCognitoHost(true),
+            port: 443,
+            path: '/oauth2/token',
+            method: 'POST',
+            headers: headers
+        };
+        return new Promise((resolve, reject) => {
+            const req = https.request(options, (res) => {
+                if (res.statusCode < 200 || res.statusCode > 299) {
+                    return resolve(this.createResponse(JSON.stringify({ error: `HTTP status code ${res.statusCode}` }), res.statusCode));
+                }
+                const body = [];
+                res.on('data', (chunk) => body.push(chunk));
+                res.on('end', async () => {
+                    const resString = Buffer.concat(body).toString();
+                    const response = JSON.parse(resString);
+                    if (response && response.access_token) {
+                        record.accessToken = response.access_token;
+                        record.expirationTime = Date.now() + 15 * 60 * 1000;
+                        if (response.refresh_token) {
+                            record.refreshToken = response.refresh_token;
+                        }
+                        await saveSessionToStore(record);
+                        resolve(this.createResponse(JSON.stringify({ accessToken: record.accessToken, refreshToken: record.refreshToken, expirationTime: record.expirationTime }), 200));
+                    } else {
+                        resolve(this.createResponse(JSON.stringify({ error: 'Request error: ' + resString }), 400));
+                    }
+                });
+            });
+            req.on('error', (err) => {
+                resolve(this.createResponse(JSON.stringify({ error: err.message }), 500));
+            });
+            req.on('timeout', () => {
+                req.destroy();
+                resolve(this.createResponse(JSON.stringify({ error: 'Request time out' }), 500));
+            });
+            req.write(querystring.stringify(params));
+            req.end();
+        });
+    };
+
 function getSessionToken(authorizationHeader) {
         //Authorization header has the format of "Bearer <session token>".
         if(authorizationHeader == null || authorizationHeader.length === 0) {

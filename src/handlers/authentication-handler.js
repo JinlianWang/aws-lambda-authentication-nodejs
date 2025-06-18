@@ -36,6 +36,9 @@ exports.authenticationHandler = async (event) => {
         case "/apis/authentication/resource":
             response = await authenticationService.protectedResource(event.headers && event.headers["Authorization"]);
             break;
+        case "/apis/authentication/refresh":
+            response = await authenticationService.refreshToken(event.headers && event.headers["Authorization"]);
+            break;
         default:
             response = authenticationService.createResponse("Page not found with http method: " + event.httpMethod + " path:" + (event.path == null ? "" : event.path), 404);
     }
