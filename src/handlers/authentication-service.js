@@ -71,9 +71,15 @@ module.exports = (() => {
                     const resString = Buffer.concat(body).toString();
                     const response = JSON.parse(resString);
                     if(response != null && response["access_token"] != null) {
-                        getUserInfo(response["access_token"]).then(async (userInfo)=>{
+                        const accessToken = response["access_token"];
+                        const refreshToken = response["refresh_token"];
+                        getUserInfo(accessToken).then(async (userInfo)=>{
                             userInfo["id"] = uuid.v4();
                             userInfo["expirationTime"] = Date.now()  + 15 * 60 * 1000;  // Valid for 15 minutes
+                            userInfo["accessToken"] = accessToken;
+                            if(refreshToken) {
+                                userInfo["refreshToken"] = refreshToken;
+                            }
                             sessionInfo = userInfo;
                             await saveSessionToStore(userInfo);
                             const response = this.createResponse(loginRedirectUrl + "?session=" + sessionInfo["id"], 307);
@@ -126,6 +132,10 @@ module.exports = (() => {
     SingletonClass.prototype.logout = async function logout(authorizationHeader) {
         const sessionToken = getSessionToken(authorizationHeader);
         if(sessionToken) {
+            const record = await getSessionFromStore(sessionToken);
+            if(record && record.accessToken) {
+                await revokeCognitoSession(record.accessToken);
+            }
             await deleteSessionFromStore(sessionToken);
         }
         if(sessionInfo != null && (sessionInfo.id === sessionToken)) {
@@ -157,6 +167,15 @@ function getSessionToken(authorizationHeader) {
 
     async function deleteSessionFromStore(sessionId) {
         await dynamo.delete({TableName: sessionTable, Key: {id: sessionId}}).promise();
+    }
+
+    async function revokeCognitoSession(accessToken) {
+        const cognito = new AWS.CognitoIdentityServiceProvider();
+        try {
+            await cognito.globalSignOut({AccessToken: accessToken}).promise();
+        } catch(err) {
+            console.error('Failed to revoke Cognito session', err);
+        }
     }
 
     function getUserInfo(access_token) {

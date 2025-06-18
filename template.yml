@@ -41,6 +41,11 @@ Resources:
         - AWSXrayWriteOnlyAccess
         - AWSLambdaVPCAccessExecutionRole
         - AmazonDynamoDBFullAccess
+        - Statement:
+            Effect: Allow
+            Action:
+              - cognito-idp:GlobalSignOut
+            Resource: "*"
       Events:
         DemoAPI:
           Type: Api
